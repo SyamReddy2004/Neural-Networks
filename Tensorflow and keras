@@ -2,28 +2,23 @@ import tensorflow as tf
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 import numpy as np
-import matplotlib.pyplot as plt
 
-# Sample dataset
 emails = [
-    "Get free tickets now!",
-    "Limited offer, buy now!",
-    "Your wing is waiting",
-    "Not spam",
-    "Free trial, sign up now!"
-]
-labels = [1, 1, 1, 0, 1]  # 1 for spam, 0 for not spam
+    "Congratulations! You won a lottery, claim now!",
+    "Meeting scheduled tomorrow at 10 AM",
+    "Get free coupons and discounts today!",
 
-# Tokenize emails
+]
+
+labels = [1,0,1]
+
 tokenizer = Tokenizer()
 tokenizer.fit_on_texts(emails)
 sequences = tokenizer.texts_to_sequences(emails)
 
-# Pad sequences
 max_length = 10
 padded_sequences = pad_sequences(sequences, maxlen=max_length, padding='post')
 
-# Define model
 model = tf.keras.Sequential([
     tf.keras.layers.Embedding(input_dim=100, output_dim=10, input_length=max_length),
     tf.keras.layers.Flatten(),
@@ -31,41 +26,5 @@ model = tf.keras.Sequential([
     tf.keras.layers.Dense(1, activation='sigmoid')
 ])
 
-# Compile model
 model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-
-# Train model
-history = model.fit(padded_sequences, np.array(labels), epochs=10, verbose=1)
-
-# Evaluate model
-loss, acc = model.evaluate(padded_sequences, np.array(labels), verbose=0)
-print(f"\nFinal Accuracy: {acc:.2f}")
-
-# Make predictions
-predictions = model.predict(padded_sequences)
-print("\nPredictions (probabilities):")
-print(predictions)
-
-# Convert probabilities to binary spam/not spam
-predicted_labels = (predictions > 0.5).astype(int)
-print("\nPredicted Labels (1=spam, 0=not spam):")
-print(predicted_labels.flatten())
-
-# Plot training accuracy and loss
-plt.figure(figsize=(12,4))
-
-plt.subplot(1,2,1)
-plt.plot(history.history['accuracy'], label='Accuracy')
-plt.title('Training Accuracy')
-plt.xlabel('Epoch')
-plt.ylabel('Accuracy')
-plt.legend()
-
-plt.subplot(1,2,2)
-plt.plot(history.history['loss'], label='Loss', color='red')
-plt.title('Training Loss')
-plt.xlabel('Epoch')
-plt.ylabel('Loss')
-plt.legend()
-
-plt.show()
+model.fit(padded_sequences, np.array(labels), epochs=3, verbose=1)

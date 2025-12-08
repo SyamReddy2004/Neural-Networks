@@ -1,0 +1,105 @@
+!wget https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3.cfg
+!wget https://pjreddie.com/media/files/yolov3.weights
+!wget https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names
+
+import cv2
+import numpy as np
+from google.colab.patches import cv2_imshow # Import cv2_imshow
+
+# Paths to YOLO files
+weights_path = "yolov3.weights"
+config_path = "yolov3.cfg"
+names_path = "coco.names"
+
+# Load class names
+with open(names_path, "r") as f:
+    classes = [line.strip() for line in f.readlines()]
+
+# Load YOLO network
+net = cv2.dnn.readNetFromDarknet(config_path, weights_path)
+layer_names = net.getLayerNames()
+output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers().flatten()]
+
+# Read image
+image_path = "/content/animal.png"  # your dogs/cat image
+img = cv2.imread(image_path)
+height, width = img.shape[:2]
+
+# Create blob and perform forward pass
+blob = cv2.dnn.blobFromImage(img, 1/255.0, (416, 416), swapRB=True, crop=False)
+net.setInput(blob)
+outs = net.forward(output_layers)
+
+class_ids = []
+confidences = []
+boxes = []
+
+# Collect detections
+for out in outs:
+    for detection in out:
+        scores = detection[5:]
+        class_id = np.argmax(scores)
+        confidence = scores[class_id]
+
+        # Filter by confidence and only specific classes if you want
+        if confidence > 0.5:
+            # YOLO gives center x,y and width,height as ratios
+            center_x = int(detection[0] * width)
+            center_y = int(detection[1] * height)
+            w = int(detection[2] * width)
+            h = int(detection[3] * height)
+
+            x = int(center_x - w / 2)
+            y = int(center_y - h / 2)
+
+            boxes.append([x, y, w, h])
+            confidences.append(float(confidence))
+            class_ids.append(class_id)
+
+# Non-max suppression to remove overlaps
+indexes = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
+
+# You can filter only dogs and cats (coco indices: dog=16, cat=15 in standard coco.names)
+DOG_CLASS_NAME = "dog"
+CAT_CLASS_NAME = "cat"
+
+dog_count = 0
+cat_count = 0
+
+font = cv2.FONT_HERSHEY_SIMPLEX
+color = (0, 0, 255)  # red bounding boxes as in your example
+thickness = 2
+
+if len(indexes) > 0:
+    for i in indexes.flatten():
+        x, y, w, h = boxes[i]
+        label = str(classes[class_ids[i]])
+
+        # Skip if not dog or cat (optional)
+        if label not in [DOG_CLASS_NAME, CAT_CLASS_NAME]:
+            continue
+
+        # Create custom label like DOG 1, CAT 1, etc.
+        if label == DOG_CLASS_NAME:
+            dog_count += 1
+            display_label = f"DOG {dog_count}"
+        else:
+            cat_count += 1
+            display_label = f"CAT {cat_count}"
+
+        # Draw rectangle
+        cv2.rectangle(img, (x, y), (x + w, y + h), color, thickness)
+
+        # Put label above box
+        text_size, _ = cv2.getTextSize(display_label, font, 0.7, 2)
+        text_w, text_h = text_size
+        cv2.rectangle(img, (x, y - text_h - 6), (x + text_w, y), color, -1)
+        cv2.putText(img, display_label, (x, y - 4), font, 0.7, (255, 255, 255), 2)
+
+# Show result
+cv2_imshow(img) # Use cv2_imshow instead of cv2.imshow
+cv2.waitKey(0)
+cv2.destroyAllWindows()
+
+# Save result
+cv2.imwrite("output_detected.jpg", img)

@@ -1,0 +1,68 @@
+import tensorflow as tf
+from tensorflow.keras import layers, models
+import matplotlib.pyplot as plt
+import cv2
+import numpy as np
+
+# 1. Load and preprocess MNIST dataset
+(x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+x_train = x_train.astype("float32") / 255.0
+x_test = x_test.astype("float32") / 255.0
+
+# 2. Build the model
+model = models.Sequential([
+    layers.Flatten(input_shape=(28, 28)),
+    layers.Dense(128, activation='relu'),
+    layers.Dense(10, activation='softmax')
+])
+
+# 3. Compile
+model.compile(
+    optimizer=tf.keras.optimizers.SGD(learning_rate=0.01, momentum=0.9),
+    loss='sparse_categorical_crossentropy',
+    metrics=['accuracy'] # Removed Precision and Recall to resolve shape incompatibility
+)
+
+# 4. Train longer for better accuracy
+model.fit(x_train, y_train, epochs=5, validation_split=0.1, verbose=2)
+
+# 5. Evaluate
+results = model.evaluate(x_test, y_test, verbose=0)
+
+# Note: Precision and Recall cannot be directly extracted here if not compiled with the model.
+# You would typically calculate these manually after prediction for multi-class problems if needed.
+test_loss, test_acc = results
+print(f"Test Accuracy: {test_acc:.4f}")
+
+# ---------- USER INPUT PART ----------
+def predict_digit(img_path):
+    # Load the image
+    img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise ValueError("Image not found or invalid path!")
+
+    # Resize to 28x28 and normalize
+    img = cv2.resize(img, (28, 28)).astype("float32") / 255.0
+
+    # Invert colors if background is white
+    if np.mean(img) > 0.5:  # heuristic: bright background
+        img = 1.0 - img
+
+    # Reshape for model input
+    img = np.expand_dims(img, axis=0)  # shape (1, 28, 28)
+
+    # Predict
+    prediction = model.predict(img)
+    predicted_digit = np.argmax(prediction)
+
+    # Show the image
+    plt.imshow(img.reshape(28, 28), cmap='gray')
+    plt.title(f"Predicted Digit = {predicted_digit}")
+    plt.axis("off")
+    plt.show()
+
+    return predicted_digit
+
+# Example usage
+img_path = input("Enter the image path (example: digit.png): ")
+print("Predicted Digit =", predict_digit(img_path))

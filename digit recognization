@@ -1,0 +1,116 @@
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras import layers, models
+import matplotlib.pyplot as plt
+import cv2
+import os
+
+# ----------------------------
+# 1) Load MNIST and normalize
+# ----------------------------
+(x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+x_train = x_train.astype("float32") / 255.0  # (60000,28,28)
+x_test  = x_test.astype("float32")  / 255.0  # (10000,28,28)
+
+# add channel dimension
+x_train = np.expand_dims(x_train, -1)  # (60000,28,28,1)
+x_test  = np.expand_dims(x_test,  -1)  # (10000,28,28,1)
+
+# ----------------------------
+# 2) Create paired images (two digits side-by-side)
+# ----------------------------
+def make_pairs(x, y, n_pairs):
+    n = x.shape[0]
+    idx1 = np.random.randint(0, n, size=n_pairs)
+    idx2 = np.random.randint(0, n, size=n_pairs)
+    left  = x[idx1]
+    right = x[idx2]
+    X_pairs = np.concatenate([left, right], axis=2)  # concat width: (28, 28+28=56)
+    y_left  = y[idx1]
+    y_right = y[idx2]
+    return X_pairs, y_left, y_right
+
+NUM_TRAIN = 100000
+NUM_TEST  = 20000
+
+X_train_pairs, y_train_left, y_train_right = make_pairs(x_train, y_train, NUM_TRAIN)
+X_test_pairs,  y_test_left,  y_test_right  = make_pairs(x_test,  y_test,  NUM_TEST)
+
+# ----------------------------
+# 3) Build a CNN with two output heads (one per digit)
+# ----------------------------
+input_shape = (28, 56, 1)
+inp = layers.Input(shape=input_shape)
+
+x = layers.Conv2D(32, (3,3), activation='relu', padding='same')(inp)
+x = layers.MaxPooling2D((2,2))(x)                # 14x28
+x = layers.Conv2D(64, (3,3), activation='relu', padding='same')(x)
+x = layers.MaxPooling2D((2,2))(x)                # 7x14
+x = layers.Flatten()(x)
+x = layers.Dense(128, activation='relu')(x)
+
+left_out  = layers.Dense(10, activation='softmax', name='left')(x)
+right_out = layers.Dense(10, activation='softmax', name='right')(x)
+
+model = models.Model(inputs=inp, outputs=[left_out, right_out])
+
+model.compile(optimizer='adam',
+              loss={'left': 'sparse_categorical_crossentropy',
+                    'right':'sparse_categorical_crossentropy'},
+              metrics={'left': 'accuracy', 'right': 'accuracy'})
+
+# ----------------------------
+# 4) Train
+# ----------------------------
+model.fit(
+    X_train_pairs,
+    {'left': y_train_left, 'right': y_train_right},
+    validation_split=0.1,
+    epochs=1,
+    batch_size=128
+)
+
+# ----------------------------
+# 5) Evaluate
+# ----------------------------
+eval_res = model.evaluate(
+    X_test_pairs,
+    {'left': y_test_left, 'right': y_test_right},
+    verbose=1
+)
+print("Test results:", eval_res)
+
+# ----------------------------
+# 6) Predict from a user-provided image and display output
+# ----------------------------
+img_path = input("Enter the image path (example: two_digits.png): ").strip()
+if not os.path.exists(img_path):
+    raise FileNotFoundError(f"File not found: {img_path}")
+
+# Load as grayscale
+img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+if img is None:
+    raise ValueError("Unable to read image. Make sure the path points to an image file.")
+
+# Resize to (28,56) - width should be 56 (two 28-wide digits side-by-side)
+img_resized = cv2.resize(img, (56, 28), interpolation=cv2.INTER_AREA)
+
+# Normalize to 0..1 and add channel
+img_norm = img_resized.astype("float32") / 255.0
+# If background is white and digits are dark, invert to match MNIST (white digit on black bg)
+if np.mean(img_norm) > 0.5:
+    img_norm = 1.0 - img_norm
+img_input = np.expand_dims(img_norm, axis=(0, -1))  # shape (1,28,56,1)
+
+# Predict
+pred_left_prob, pred_right_prob = model.predict(img_input)
+pred_left  = int(np.argmax(pred_left_prob[0]))
+pred_right = int(np.argmax(pred_right_prob[0]))
+
+print("Predicted digits:", pred_left, pred_right)
+
+# Display the input image with prediction
+plt.imshow(img_resized, cmap='gray')
+plt.title(f"Predicted: {pred_left}{pred_right}")
+plt.axis('off')
+plt.show()

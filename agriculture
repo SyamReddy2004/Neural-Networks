@@ -1,0 +1,59 @@
+import cv2
+import numpy as np
+from skimage.measure import label, regionprops
+import matplotlib.pyplot as plt
+
+# --- Ask user for image path ---
+image_path = input("Enter the image path: ")
+
+# Load image
+img = cv2.imread(image_path)
+
+if img is None:
+    print("Error: Image not found. Check the path.")
+    exit()
+
+# Convert to RGB
+rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+# Convert to HSV and create green segmentation mask
+hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+lower_green = np.array([25, 40, 20])
+upper_green = np.array([95, 255, 255])
+mask = cv2.inRange(hsv, lower_green, upper_green)
+
+# Morphological cleanup
+kernel = np.ones((7, 7), np.uint8)
+mask_clean = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+mask_clean = cv2.morphologyEx(mask_clean, cv2.MORPH_CLOSE, kernel)
+
+# Label detected plant/tree blobs
+labels = label(mask_clean)
+
+# Copy image for drawing
+circle_img = rgb.copy()
+tree_count = 0
+
+for region in regionprops(labels):
+    if region.area > 100:  # ignore noise
+        y, x = region.centroid
+        r = int(region.equivalent_diameter / 2)
+        cv2.circle(circle_img, (int(x), int(y)), r, (255, 0, 0), 2)
+        tree_count += 1
+
+# --- Display side by side ---
+plt.figure(figsize=(12, 6))
+
+plt.subplot(1, 2, 1)
+plt.imshow(rgb)
+plt.title("Original Image")
+plt.axis("off")
+
+plt.subplot(1, 2, 2)
+plt.imshow(circle_img)
+plt.title(f"Detected Trees: {tree_count}")
+plt.axis("off")
+
+plt.show()
+
+print("Total Trees Detected:", tree_count)

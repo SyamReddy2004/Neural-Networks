@@ -1,0 +1,183 @@
+# Install dependencies
+!pip install -q ultralytics opencv-python tensorflow pillow
+
+# Imports
+from ultralytics import YOLO
+from google.colab import files
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+from PIL import Image
+import tensorflow as tf
+
+from tensorflow.keras.applications.resnet50 import (
+    ResNet50,
+    preprocess_input as resnet_preprocess,
+    decode_predictions,
+)
+
+from tensorflow.keras.applications.efficientnet import (
+    EfficientNetB0,
+    preprocess_input as effnet_preprocess,
+)
+
+IMG_SIZE = (224, 224)
+
+# ----------------- Upload image ----------------- #
+print("Upload an image with animals (jpg/png)...")
+uploaded = files.upload()
+
+if not uploaded:
+    print("Error: No file was uploaded. Please upload a valid image file.")
+    exit()
+
+image_path = list(uploaded.keys())[0]
+
+# Check if the uploaded file content is empty
+if not uploaded[image_path]:
+    print(f"Error: The uploaded file '{image_path}' appears to be empty or corrupted. Please upload a valid image.")
+    exit()
+
+print("Image uploaded:", image_path)
+
+# ----------------- Build classifier models ----------------- #
+print("Loading classifier models (ResNet50 + EfficientNetB0)...")
+
+resnet_model = ResNet50(
+    weights="imagenet",
+    input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3),
+    include_top=True
+)
+
+effnet_model = EfficientNetB0(
+    weights="imagenet",
+    input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3),
+    include_top=True
+)
+
+print("Classifier models loaded.")
+
+def classify_crop(pil_img, top_k=1):
+    """Classify a cropped animal region using ResNet50 + EfficientNetB0 ensemble."""
+    
+    img_resized = pil_img.resize(IMG_SIZE)
+    arr = np.array(img_resized).astype("float32")
+    arr = np.expand_dims(arr, axis=0)  # (1, 224, 224, 3)
+
+    # Preprocess for each model
+    resnet_in = resnet_preprocess(arr.copy())
+    effnet_in = effnet_preprocess(arr.copy())
+
+    # Predict
+    resnet_pred = resnet_model.predict(resnet_in, verbose=0)[0]
+    effnet_pred = effnet_model.predict(effnet_in, verbose=0)[0]
+
+    # Ensemble (average)
+    ensemble_scores = (resnet_pred + effnet_pred) / 2.0
+
+    # Decode top-k
+    decoded = decode_predictions(
+        np.expand_dims(ensemble_scores, 0),
+        top=top_k
+    )[0]
+
+    return decoded  # list of tuples
+
+# ----------------- Run YOLO detection ----------------- #
+print("Loading YOLOv8 model...")
+yolo_model = YOLO("yolov8n.pt")   # pretrained on COCO
+
+print("Running YOLO detection...")
+results = yolo_model(image_path)
+r = results[0]
+
+# COCO animal classes
+animal_classes = {
+    "bird", "cat", "dog", "horse", "sheep", "cow",
+    "elephant", "bear", "zebra", "giraffe"
+}
+
+# Read original image (BGR)
+img = cv2.imread(image_path)
+h, w = img.shape[:2]
+
+# Class name mapping
+names = (
+    yolo_model.model.names
+    if hasattr(yolo_model, "model") and hasattr(yolo_model.model, "names")
+    else yolo_model.names
+)
+
+print("Processing detections...")
+
+for box in r.boxes:
+    cls_id = int(box.cls.cpu().numpy().item())
+    cls_name = names[cls_id].lower()
+    conf = float(box.conf.cpu().numpy().item())
+
+    if cls_name not in animal_classes:
+        continue  # skip non-animals
+
+    # Get bounding box
+    xyxy = box.xyxy.cpu().numpy().flatten().astype(int)
+    x1, y1, x2, y2 = xyxy
+
+    x1 = max(0, x1)
+    y1 = max(0, y1)
+    x2 = min(w - 1, x2)
+    y2 = min(h - 1, y2)
+
+    if x2 <= x1 or y2 <= y1:
+        continue
+
+    # Crop region and convert to PIL (RGB)
+    crop_bgr = img[y1:y2, x1:x2]
+    if crop_bgr.size == 0:
+        continue
+
+    crop_rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
+    pil_crop = Image.fromarray(crop_rgb)
+
+    # Classify species
+    species_preds = classify_crop(pil_crop, top_k=1)
+    class_id, species_label, species_prob = species_preds[0]
+
+    # Text: species + YOLO confidence
+    label_text = f"{species_label} ({species_prob:.2f})"
+
+    # Draw bounding box
+    cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+    # Draw label background
+    (tw, th), _ = cv2.getTextSize(
+        label_text,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        1
+    )
+
+    cv2.rectangle(img, (x1, y1 - th - 6), (x1 + tw, y1), (0, 255, 0), -1)
+    cv2.putText(
+        img,
+        label_text,
+        (x1, y1 - 4),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (0, 0, 0),
+        1
+    )
+
+# ----------------- Show final image ----------------- #
+out_path = "animals_species_boxes.jpg"
+cv2.imwrite(out_path, img)
+
+print("Saved annotated image to:", out_path)
+
+img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+plt.figure(figsize=(10, 10))
+plt.imshow(img_rgb)
+plt.axis("off")
+plt.show()
+
+print("Done!")

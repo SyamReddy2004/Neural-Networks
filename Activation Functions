@@ -1,0 +1,40 @@
+# ACTIVATION FUNCTIONS 
+import numpy as np
+
+# 1. Sigmoid
+# Formula: 1 / (1 + e^(-x))
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+# 2. Tanh
+# Formula: (e^x - e^-x) / (e^x + e^-x)
+def tanh(x):
+    return np.tanh(x)
+
+# 3. ReLU
+# Formula: max(0, x)
+def relu(x):
+    return np.maximum(0, x)
+
+# 4. Leaky ReLU
+# Formula: x if x>0 else αx
+def leaky_relu(x, alpha=0.01):
+    return np.where(x > 0, x, alpha * x)
+
+# 5. Softmax
+# Formula: e^xi / Σ(e^xj)
+def softmax(x):
+    e = np.exp(x - np.max(x))  # numerical stability
+    return e / e.sum()
+
+# EXAMPLE INPUT
+x = np.array([-2, -1, 0, 1, 2])
+x_softmax = np.array([2.0, 1.0, 0.1])
+
+print("Input:", x)
+print("\nSigmoid:", sigmoid(x))
+print("\nTanh:", tanh(x))
+print("\nReLU:", relu(x))
+print("\nLeaky ReLU:", leaky_relu(x))
+print("\nSoftmax Input:", x_softmax)
+print("Softmax Output:", softmax(x_softmax))

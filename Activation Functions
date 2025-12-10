@@ -16,12 +16,7 @@ def tanh(x):
 def relu(x):
     return np.maximum(0, x)
 
-# 4. Leaky ReLU
-# Formula: x if x>0 else αx
-def leaky_relu(x, alpha=0.01):
-    return np.where(x > 0, x, alpha * x)
-
-# 5. Softmax
+# 4. Softmax
 # Formula: e^xi / Σ(e^xj)
 def softmax(x):
     e = np.exp(x - np.max(x))  # numerical stability
@@ -35,6 +30,5 @@ print("Input:", x)
 print("\nSigmoid:", sigmoid(x))
 print("\nTanh:", tanh(x))
 print("\nReLU:", relu(x))
-print("\nLeaky ReLU:", leaky_relu(x))
 print("\nSoftmax Input:", x_softmax)
 print("Softmax Output:", softmax(x_softmax))
